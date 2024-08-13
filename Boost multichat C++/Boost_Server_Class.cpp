@@ -7,8 +7,17 @@ ServerClass::ServerClass(boost::asio::io_context& io_context)
     startAccept();
 }
 
-ServerClass::~ServerClass() {
-    // Perform any cleanup if necessary (e.g., close client connections)
+ServerClass::~ServerClass()
+{
+    acceptor_.close();
+    for (auto& client : clients_)
+    {
+        if (client.second->is_open())
+        {
+            client.second->close();
+        }
+    }
+    clients_.clear();
 }
 
 void ServerClass::welcomeMessage() {
@@ -22,9 +31,9 @@ void ServerClass::startAccept() {
         if (!error) {
             std::cout << "New connection accepted." << std::endl;
             int socket_fd = new_socketptr->native_handle();
-            _clients[socket_fd] = new_socketptr;
+            clients_[socket_fd] = new_socketptr;
             startReading(new_socketptr);
-            startAccept(); // Prepare for next connection
+            startAccept();
         }
         else {
             throw std::runtime_error("Error accepting connection: " + error.message());
@@ -34,28 +43,32 @@ void ServerClass::startAccept() {
 
 void ServerClass::startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket) {
     socket->async_read_some(boost::asio::buffer(data_), [this, socket](boost::system::error_code ec, std::size_t length) {
-        if (!ec) {
+        if (!ec)
+        {
             std::string message(data_.data(), length);
             std::cout << "Received: " << message << std::endl;
             broadcast(message, socket);
             doWrite(socket, length);
         }
-        else {
+        else 
+        {
+            clients_.erase(socket->native_handle()); // Remove client from the map if an error occurs
             throw std::runtime_error("Read error: " + ec.message());
-            _clients.erase(socket->native_handle()); // Remove client from the map if an error occurs
         }
         });
 }
 
 void ServerClass::doWrite(std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::size_t length) {
     boost::asio::async_write(*socket, boost::asio::buffer(data_, length), [this, socket](boost::system::error_code ec, std::size_t /*length*/) {
-        if (!ec) {
+        if (!ec)
+        {
             std::cout << "Message sent" << std::endl;
             startReading(socket);
         }
-        else {
+        else 
+        {
+            clients_.erase(socket->native_handle()); // Remove client from the map if an error occurs
             throw std::runtime_error("Write error : " + ec.message());
-            _clients.erase(socket->native_handle()); // Remove client from the map if an error occurs
         }
         });
 }
@@ -63,12 +76,12 @@ void ServerClass::doWrite(std::shared_ptr<boost::asio::ip::tcp::socket> socket, 
 void ServerClass::broadcast(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> sender_socket)
 {   
     auto message_ptr  = std::make_shared<std::string>(message); //Shared pointer
-    for (const auto& client : _clients) {
+    for (const auto& client : clients_) {
         if (client.second != sender_socket) {
             boost::asio::async_write(*client.second, boost::asio::buffer(*message_ptr), [this,client, message_ptr](boost::system::error_code ec, std::size_t /*length*/) {
                 if (ec)
                 {
-                    _clients.erase(client.first); // Remove client from the map if an error occurs
+                    clients_.erase(client.first); // Remove client from the map if an error occurs
                     throw std::runtime_error("Broadcast write error: " + ec.message());
                 }
                 });

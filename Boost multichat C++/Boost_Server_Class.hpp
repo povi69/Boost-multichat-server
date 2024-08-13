@@ -21,7 +21,7 @@ private:
     static constexpr std::size_t BUFFER_SIZE = 1024;
     boost::asio::ip::tcp::acceptor acceptor_;
     std::array<char, BUFFER_SIZE> data_;
-    std::unordered_map<int, std::shared_ptr<boost::asio::ip::tcp::socket>> _clients; // Map of connected clients
+    std::unordered_map<int, std::shared_ptr<boost::asio::ip::tcp::socket>> clients_; 
 };
 
 
