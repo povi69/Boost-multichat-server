@@ -50,13 +50,20 @@ void ServerClass::startReading(std::shared_ptr<boost::asio::ip::tcp::socket> soc
             broadcast(message, socket);
             doWrite(socket, length);
         }
-        else 
+        else
         {
-            clients_.erase(socket->native_handle()); // Remove client from the map if an error occurs
-            throw std::runtime_error("Read error: " + ec.message());
+            if (ec == boost::asio::error::eof || ec == boost::asio::error::connection_reset) {
+                std::cout << "Client disconnected." << std::endl;
+            }
+            else {
+                clients_.erase(socket->native_handle()); // Remove client from the map
+                throw std::runtime_error("Read error: " + ec.message());
+            }
+            clients_.erase(socket->native_handle()); // Remove client from the map
         }
         });
 }
+
 
 void ServerClass::doWrite(std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::size_t length) {
     boost::asio::async_write(*socket, boost::asio::buffer(data_, length), [this, socket](boost::system::error_code ec, std::size_t /*length*/) {
@@ -65,20 +72,20 @@ void ServerClass::doWrite(std::shared_ptr<boost::asio::ip::tcp::socket> socket, 
             std::cout << "Message sent" << std::endl;
             startReading(socket);
         }
-        else 
+        else
         {
             clients_.erase(socket->native_handle()); // Remove client from the map if an error occurs
-            throw std::runtime_error("Write error : " + ec.message());
+            throw std::runtime_error("Write error: " + ec.message());
         }
         });
 }
 
 void ServerClass::broadcast(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> sender_socket)
-{   
-    auto message_ptr  = std::make_shared<std::string>(message); //Shared pointer
+{
+    auto message_ptr = std::make_shared<std::string>(message); //Shared pointer
     for (const auto& client : clients_) {
         if (client.second != sender_socket) {
-            boost::asio::async_write(*client.second, boost::asio::buffer(*message_ptr), [this,client, message_ptr](boost::system::error_code ec, std::size_t /*length*/) {
+            boost::asio::async_write(*client.second, boost::asio::buffer(*message_ptr), [this, client, message_ptr](boost::system::error_code ec, std::size_t /*length*/) {
                 if (ec)
                 {
                     clients_.erase(client.first); // Remove client from the map if an error occurs
